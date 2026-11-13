@@ -42,6 +42,8 @@ The input columns, then:
 |---|---|
 | `bad_reviews` | up to 5 bullets, one per line, newest first: `• First L. - 4-5 word complaint` |
 | `competitor_1..3` | cleaned names of the top 3 competitors, in Google's ranking order |
+| `competitor_N_rating`, `competitor_N_reviews`, `competitor_N_distance_mi` | the numbers behind each pick, so the rules can be checked |
+| `competitor_search` | `within 5 mi`, or `widened to 15 mi: X within 5 mi, Y further out` |
 | `status` | `ok`, `partial`, `no_listing`, `error`, `skipped_budget`, `invalid_input` |
 | `notes` | why something is missing, in plain words |
 | `bad_review_count` | number of bullets |
@@ -64,7 +66,14 @@ Nothing is ever invented. A blank cell always comes with a reason in `notes`.
 
 If none of the three holds, `status` is `no_listing` and the review cell is blank. A wrong practice's reviews in a cold email would be worse than none. Competitors are still filled from the Maps results for that ZIP, measured from the ZIP centre and without the "rated higher" rule (there is no rating to compare against), and the note says so.
 
-**Fewer than 3 real competitors.** A competitor must be a dental practice (labs, schools, hospitals, community clinics, insurers and suppliers are excluded), open, within 5 miles, with 10 or more reviews, rated higher than the prospect, not the prospect itself, not on the prospect's website, not at the same address, and not a second listing of a brand already picked. Names must clean to the Part 3 standard. If fewer than 3 pass, the rest stay blank, `status` is `partial`, and the note lists what was excluded, e.g. `only 1 real competitor(s) rated higher than the prospect, with 10+ reviews within 5 mi (excluded: fewer than 10 reviews 4, the prospect itself 2, not a dental practice 2)`.
+**Fewer than 3 real competitors.** A competitor must be a dental practice (labs, schools, hospitals, community clinics, insurers and suppliers are excluded), open, **rated above 4.0** (a practice at exactly 4.0 is out) and above the prospect, with 10 or more reviews. It must not be the prospect itself, not on the prospect's website, not at the same address, and not a second listing of a brand already picked, and its name must clean to the Part 3 standard. The search runs in two rings:
+
+1. within 5 miles, in Google's ranking order;
+2. if fewer than 3 qualify, up to 15 miles: practices in the prospect's own city first, then the nearest. Google Local Finder and a city-wide Maps search add candidates when the first pool runs short.
+
+If 3 still don't qualify, the command returns the 1 or 2 that do, `status` is `partial`, and the note says why. It never fills a gap with a practice rated 4.0 or below. Example note: `only 1 real competitor(s) rated above 4.0 with 10+ reviews within 15 mi (within 5 mi, excluded: fewer than 10 reviews 4, the prospect itself 2, not a dental practice 2); the rest left blank rather than use a lower-rated practice`.
+
+So the rule can be checked row by row, each competitor's rating, review count and distance are in the output, and `competitor_search` says whether the search had to widen.
 
 ## How it works
 
@@ -74,7 +83,7 @@ For each row, 8 rows at a time:
 2. If the prospect is not in it, the practice's homepage is read (free) for its name, phone numbers and redirect target. Then Maps is searched for the domain, then for the homepage name.
 3. **Reviews**, newest first, up to 100. If that page holds fewer than 8 one/two-star reviews with text and the practice has more reviews than we read, one more page sorted lowest-first is added and everything is re-sorted by date.
 4. **One LLM call per practice** summarises up to 8 recent complaints in 4-5 words each. The model is told to use only what the review says. Answers of the wrong length are asked again (twice at most). Reviewer names are formatted locally as `First L.`.
-5. **Competitors** are taken from the pool in Google's order, through the rules above. If fewer than 3 pass, Google Local Finder results top up the pool.
+5. **Competitors** are taken from the pool in Google's order, through the rules above (rated above 4.0, 5 mi, then up to 15 mi in the same city). If fewer than 3 pass, Google Local Finder and a city-wide Maps search top up the pool.
 
 Speed and cost controls:
 

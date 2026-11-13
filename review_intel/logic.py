@@ -178,22 +178,40 @@ def centroid(places: list[dict], zip5: str) -> tuple[float | None, float | None]
 
 
 def competitors(prospect: dict, candidates: list[dict], *, want: int = 3, radius_mi: float = 5.0,
-                min_reviews: int = 10, require_higher: bool = True) -> tuple[list[dict], dict]:
-    """Top local practices in Google's own ranking order that pass every rule:
-    real dental practice, open, 10+ reviews, within radius, rated higher than the prospect (when it has a
-    rating), not the prospect itself, not a same-domain sibling, not at the same address, not a second
-    listing of a brand already picked, and a name that cleans to the Part 3 standard."""
+                min_reviews: int = 10, require_higher: bool = True, min_rating: float = 4.0,
+                min_distance_mi: float = 0.0, exclude: list[dict] | None = None, city: str = "",
+                order: str = "google") -> tuple[list[dict], dict]:
+    """Top local practices that pass every rule: real dental practice, open, 10+ reviews, rated ABOVE
+    `min_rating` (4.0 itself is out) and higher than the prospect, within `radius_mi`, not the prospect itself,
+    not a same-domain sibling, not at the same address, not a second listing of a brand already picked
+    (including anything in `exclude`), and a name that cleans to the Part 3 standard.
+    order="google" keeps Google's ranking; order="nearest" puts the prospect's own city first, then distance."""
     p_lat, p_lng = prospect.get("lat"), prospect.get("lng")
     my_dom = prospect.get("domain") or ""
     my_rating = prospect.get("rating")
     my_ids = {x for x in (prospect.get("place_id"), prospect.get("cid")) if x}
     my_name = prospect.get("name") or ""
     out, seen, dropped = [], set(), {}
+    for e in exclude or []:
+        seen.add(re.sub(r"\s+(?:\d+|ii|iii|iv)$", "", e["name"].lower()))
+        if e.get("domain") and e["domain"] not in NOT_A_SITE:
+            seen.add(e["domain"])
+    ids_seen = set()
 
     def drop(why):
         dropped[why] = dropped.get(why, 0) + 1
 
-    for c in candidates:
+    def key(c):
+        d = miles(p_lat, p_lng, c.get("lat"), c.get("lng"))
+        same_city = bool(city) and f", {city.lower()}," in f", {(c.get('address') or '').lower()}"
+        return (not same_city, d if d is not None else 999)
+
+    ordered = sorted(candidates, key=key) if order == "nearest" else list(candidates)
+    for c in ordered:
+        cid = c.get("place_id") or c.get("cid") or (c.get("name"), c.get("address"))
+        if cid in ids_seen:
+            continue  # the same listing from two searches
+        ids_seen.add(cid)
         if {c.get("place_id"), c.get("cid")} & my_ids:
             drop("the prospect itself"); continue
         dom = root_domain(c.get("website"))
@@ -211,6 +229,8 @@ def competitors(prospect: dict, candidates: list[dict], *, want: int = 3, radius
         rating = c.get("rating")
         if not rating:
             drop("no rating"); continue
+        if rating <= min_rating:
+            drop(f"rated {min_rating:.1f} or lower"); continue
         if require_higher and my_rating and rating <= my_rating:
             drop("not rated higher than prospect"); continue
         dist = miles(p_lat, p_lng, c.get("lat"), c.get("lng"))
@@ -218,6 +238,8 @@ def competitors(prospect: dict, candidates: list[dict], *, want: int = 3, radius
             drop("no map location"); continue
         if dist > radius_mi:
             drop(f"more than {radius_mi:g} mi away"); continue
+        if dist < min_distance_mi:
+            continue  # already considered in the inner ring
         if dist < 0.02:
             drop("same address as prospect"); continue
         name, _ = clean_company_name(raw)
@@ -236,3 +258,15 @@ def competitors(prospect: dict, candidates: list[dict], *, want: int = 3, radius
         if len(out) >= want:
             break
     return out, dropped
+
+
+def pick_competitors(prospect: dict, candidates: list[dict], *, city: str = "", want: int = 3,
+                     radius_mi: float = 5.0, city_radius_mi: float = 15.0, **rules) -> tuple[list[dict], dict, bool]:
+    """Within `radius_mi` first, in Google's order. If fewer than `want` qualify, widen to `city_radius_mi`:
+    same city first, then nearest. Returns (competitors, reasons dropped in the inner ring, widened?)."""
+    inner, dropped = competitors(prospect, candidates, want=want, radius_mi=radius_mi, **rules)
+    if len(inner) >= want or city_radius_mi <= radius_mi:
+        return inner, dropped, False
+    outer, _ = competitors(prospect, candidates, want=want - len(inner), radius_mi=city_radius_mi,
+                           min_distance_mi=radius_mi, exclude=inner, city=city, order="nearest", **rules)
+    return inner + outer, dropped, True

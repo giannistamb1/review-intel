@@ -23,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor
 from . import providers
 from .config import Settings
 from .http import AuthError, BudgetExceeded, Meter, Treg, UpstreamError
-from .logic import bullet, centroid, competitors, match_listing, name_specific, pick_low_reviews
+from .logic import bullet, centroid, match_listing, pick_competitors, name_specific, pick_low_reviews
 from .names import clean_company_name, clean_or_blank, reviewer_name
 from .summarize import NONE, backend, summarise
 from .website import fetch_homepage, root_domain
@@ -33,8 +33,10 @@ ALIASES = {"domain": {"domain", "website", "url", "site", "root_domain", "compan
            "city": {"city", "town"},
            "state": {"state", "st", "state_code", "region"},
            "zip": {"zip", "zipcode", "zip_code", "postal_code", "postcode", "postal"}}
-OUT_COLS = ["bad_reviews", "competitor_1", "competitor_2", "competitor_3", "status", "notes", "bad_review_count",
-            "google_listing_name", "google_rating", "google_review_count", "google_maps_url", "listing_match"]
+OUT_COLS = (["bad_reviews", "competitor_1", "competitor_2", "competitor_3", "status", "notes", "bad_review_count",
+             "competitor_search"]
+            + [f"competitor_{i}_{k}" for i in (1, 2, 3) for k in ("rating", "reviews", "distance_mi")]
+            + ["google_listing_name", "google_rating", "google_review_count", "google_maps_url", "listing_match"])
 MAX_ROWS = 5000
 WANT = 5          # bullets per practice (brief: 3-5)
 CANDIDATES = 8    # recent 1-2 star reviews sent to the LLM, so a non-complaint can be replaced
@@ -190,29 +192,49 @@ def process_row(inp: dict, t: Treg, s: Settings, meter: Meter, progress=lambda s
             notes.append(f"{count} one/two-star review(s) with a written complaint on Google"
                          + (f" ({'; '.join(extra)})" if extra else ""))
 
-    # 5. competitors
+    # 5. competitors: rated above 4.0 (and above the prospect), 10+ reviews; 5 mi first, then the city
     progress("competitors")
     require_higher = bool(prospect.get("rating"))
-    comps, dropped = competitors(prospect, pool, radius_mi=s.radius_mi, min_reviews=s.min_comp_reviews,
-                                 require_higher=require_higher)
+    rules = dict(min_reviews=s.min_comp_reviews, require_higher=require_higher, min_rating=s.min_comp_rating)
+    cands = list(pool)
+
+    def pick():
+        return pick_competitors(prospect, cands, city=inp["city"], radius_mi=s.radius_mi,
+                                city_radius_mi=s.city_radius_mi, **rules)
+
+    comps, dropped, widened = pick()
     if len(comps) < 3 and prospect.get("lat") is not None:
-        try:
-            extra = providers.local_finder(t, "dentist", loc)
-            comps, dropped = competitors(prospect, pool + extra, radius_mi=s.radius_mi,
-                                         min_reviews=s.min_comp_reviews, require_higher=require_higher)
-        except UpstreamError as e:
-            notes.append(f"Local Finder top-up failed ({str(e)[:80]})")
+        for extra_call in (lambda: providers.local_finder(t, "dentist", loc),
+                           lambda: providers.maps_search(t, "dentist", f"{inp['city']}, {inp['state']}", limit=60)[0]):
+            if len(comps) >= 3:
+                break
+            try:
+                cands += extra_call()
+            except UpstreamError as e:
+                notes.append(f"competitor top-up search failed ({str(e)[:80]})")
+                continue
+            comps, dropped, widened = pick()
     for i, c in enumerate(comps[:3], 1):
         out[f"competitor_{i}"] = c["name"]
+        out[f"competitor_{i}_rating"] = c["rating"]
+        out[f"competitor_{i}_reviews"] = c["review_count"]
+        out[f"competitor_{i}_distance_mi"] = c["distance_mi"]
+    in_inner = sum(1 for c in comps if c["distance_mi"] <= s.radius_mi)
     if prospect.get("lat") is None:
+        out["competitor_search"] = "not run"
         notes.append("no competitors: Maps returned nothing to measure distance from")
-    elif len(comps) < 3:
-        rule = "rated higher than the prospect, " if require_higher else ""
+    elif widened:
+        out["competitor_search"] = (f"widened to {s.city_radius_mi:g} mi: {in_inner} within {s.radius_mi:g} mi, "
+                                    f"{len(comps) - in_inner} further out")
+    else:
+        out["competitor_search"] = f"within {s.radius_mi:g} mi"
+    if prospect.get("lat") is not None and len(comps) < 3:
         top = ", ".join(f"{k} {v}" for k, v in sorted(dropped.items(), key=lambda x: -x[1])[:3])
-        notes.append(f"only {len(comps)} real competitor(s) {rule}with {s.min_comp_reviews}+ reviews within "
-                     f"{s.radius_mi:g} mi (excluded: {top or 'none found'})")
+        notes.append(f"only {len(comps)} real competitor(s) rated above {s.min_comp_rating:.1f} with "
+                     f"{s.min_comp_reviews}+ reviews within {s.city_radius_mi:g} mi (within {s.radius_mi:g} mi, "
+                     f"excluded: {top or 'none found'}); the rest left blank rather than use a lower-rated practice")
     if place is None and comps:
-        notes.append("competitors measured from the ZIP centre, without the higher-rating rule")
+        notes.append("competitors measured from the ZIP centre (no prospect rating to compare)")
 
     if not out["status"]:
         out["status"] = "ok" if (out["bad_review_count"] >= 3 and len(comps) >= 3) else "partial"
@@ -320,7 +342,10 @@ class Job:
                 "status": res.get("status", ""), "notes": res.get("notes", ""),
                 "listing": res.get("google_listing_name", ""), "rating": res.get("google_rating", ""),
                 "bad_reviews": res.get("bad_reviews", ""),
-                "competitors": [res.get(f"competitor_{k}", "") for k in (1, 2, 3) if res.get(f"competitor_{k}")]})
+                "competitors": [f"{res[f'competitor_{k}']} \u00b7 {res.get(f'competitor_{k}_rating')}\u2605 \u00b7 "
+                                f"{res.get(f'competitor_{k}_distance_mi')} mi"
+                                for k in (1, 2, 3) if res.get(f"competitor_{k}")],
+                "competitor_search": res.get("competitor_search", "")})
         return {"summary": self.summary(), "rows": rows}
 
 

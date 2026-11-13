@@ -48,6 +48,10 @@ class Settings:
         self.workers = max(1, int(_f("REVIEW_INTEL_WORKERS", 8)))
         self.radius_mi = _f("REVIEW_INTEL_RADIUS_MI", 5.0)
         self.min_comp_reviews = int(_f("REVIEW_INTEL_MIN_COMPETITOR_REVIEWS", 10))
+        # competitors must be rated ABOVE this (exclusive: a 4.0 practice is not used)
+        self.min_comp_rating = _f("REVIEW_INTEL_MIN_COMPETITOR_RATING", 4.0)
+        # if fewer than 3 qualify within RADIUS_MI, widen up to this, same city first
+        self.city_radius_mi = _f("REVIEW_INTEL_CITY_RADIUS_MI", 15.0)
         # Anthropic list price per million tokens, used for the spend meter. Override if it changes.
         self.llm_in_per_mtok = _f("REVIEW_INTEL_LLM_IN_PER_MTOK", 0.10)
         self.llm_out_per_mtok = _f("REVIEW_INTEL_LLM_OUT_PER_MTOK", 0.50)

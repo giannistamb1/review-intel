@@ -7,7 +7,8 @@ import pytest
 from review_intel import pipeline, providers
 from review_intel.config import Settings
 from review_intel.http import Meter
-from review_intel.logic import (clean_summary, competitors, match_listing, pick_low_reviews, token_set_ratio)
+from review_intel.logic import (clean_summary, competitors, match_listing, pick_competitors, pick_low_reviews,
+                                 token_set_ratio)
 from review_intel.names import clean_company_name, clean_or_blank, name_violations, reviewer_name
 from review_intel.website import root_domain
 
@@ -147,7 +148,7 @@ def test_competitor_rules():
     out, dropped = competitors(PROSPECT, cands)
     assert [c["name"] for c in out] == ["Austin Family Dentistry", "Lakeside Dental Care", "Hillcrest Orthodontics"]
     assert dropped["the prospect itself"] == 1 and dropped["same website as prospect"] == 1
-    assert dropped["not a dental practice"] == 1 and dropped["not rated higher than prospect"] == 1
+    assert dropped["not a dental practice"] == 1 and dropped["rated 4.0 or lower"] == 1
     assert dropped["fewer than 10 reviews"] == 1 and dropped["more than 5 mi away"] == 1
     assert dropped["same address as prospect"] == 1
 
@@ -264,3 +265,58 @@ def test_generic_site_title_never_matches_by_name():
     assert match_listing([pdc], "wandkdentistryvalencia.com", "91355", "Valencia", site_name="PDC") == (None, "")
     other = P("Austin Dental Care", "", "1 Main St, Austin, TX 78701")
     assert match_listing([other], "x.com", "78701", "Austin", site_name="Dental Care") == (None, "")
+
+
+# ---------------- competitor rating floor + widening (Giannis, 13 Nov 2026) ----------------
+
+LOW_PROSPECT = dict(PROSPECT, rating=1.7)
+
+
+def test_sub_four_competitor_excluded_even_if_above_prospect():
+    out, dropped = competitors(LOW_PROSPECT, [P("Starrett City Dental", "https://sc.com", rating=2.9, lat=30.28),
+                                              P("Good Dental", "https://good.com", rating=4.6, lat=30.28)])
+    assert [c["name"] for c in out] == ["Good Dental"]
+    assert dropped["rated 4.0 or lower"] == 1
+
+
+def test_exactly_four_point_zero_is_excluded():
+    out, _ = competitors(LOW_PROSPECT, [P("Eldridge Dental", "https://e.com", rating=4.0, lat=30.28),
+                                        P("Woodhaven Dental", "https://w.com", rating=4.01, lat=30.28)])
+    assert [c["name"] for c in out] == ["Woodhaven Dental"]
+
+
+def test_widens_to_city_same_city_first_when_fewer_than_three_within_radius():
+    near = P("Near Dental", "https://near.com", rating=4.5, lat=30.28)                           # ~0.7 mi
+    far_other_city = P("Far Other Dental", "https://foc.com", rating=4.9, lat=30.37,
+                       address="1 Oak St, Round Rock, TX 78664")                                  # ~6.9 mi
+    far_same_city = P("Far Austin Dental", "https://fac.com", rating=4.4, lat=30.40,
+                      address="9 Elm St, Austin, TX 78758")                                       # ~9 mi
+    too_far = P("Way Out Dental", "https://wo.com", rating=4.9, lat=30.60)                       # ~23 mi
+    low_far = P("Low Far Dental", "https://lf.com", rating=3.9, lat=30.30)
+    out, _, widened = pick_competitors(LOW_PROSPECT, [too_far, far_other_city, near, far_same_city, low_far],
+                                       city="Austin", radius_mi=5, city_radius_mi=15)
+    assert widened
+    assert [c["name"] for c in out] == ["Near Dental", "Far Austin Dental", "Far Other Dental"]
+    assert all(c["rating"] > 4.0 for c in out) and all(c["distance_mi"] <= 15 for c in out)
+
+
+def test_no_widening_when_three_found_inside_radius():
+    cands = [P(f"Rival {n} Dental", f"https://r{n}.com", rating=4.5, lat=30.27 + n / 100) for n in range(1, 5)]
+    out, _, widened = pick_competitors(LOW_PROSPECT, cands, city="Austin")
+    assert len(out) == 3 and not widened
+
+
+def test_one_or_two_results_never_padded_with_low_rated(fake_env):
+    me = P("Bright Smiles Dental", "https://brightsmiles.com", rating=1.7, reviews=20)
+    revs = [R(i, 1, f"complaint {i}", f"2026-10-0{i}") for i in range(1, 6)]
+    others = [P("Good Dental", "https://good.com", rating=4.7, lat=30.28),
+              P("Okay Dental", "https://okay.com", rating=4.2, lat=30.33),
+              P("Meh Dental", "https://meh.com", rating=4.0, lat=30.28),
+              P("Poor Dental", "https://poor.com", rating=2.9, lat=30.28)]
+    out = pipeline.process_row({"domain": "brightsmiles.com", "city": "Austin", "state": "TX", "zip": "78701"},
+                               FakeTreg([me] + others, revs), fake_env, Meter(1))
+    assert out["status"] == "partial"
+    assert [out["competitor_1"], out["competitor_2"], out["competitor_3"]] == ["Good Dental", "Okay Dental", ""]
+    assert out["competitor_1_rating"] == 4.7 and out["competitor_2_reviews"] == 50
+    assert out["competitor_3_rating"] == "" and "only 2 real competitor" in out["notes"]
+    assert "widened" in out["competitor_search"]
