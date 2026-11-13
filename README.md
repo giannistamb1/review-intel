@@ -83,6 +83,18 @@ Speed and cost controls:
 - **Spend cap:** each paid call checks `REVIEW_INTEL_MAX_USD` first. treg's real per-call charge (`X-Treg-Cost-Micro`) and the LLM token cost are counted. At the cap the remaining rows get `skipped_budget`, so a bad file cannot run up a bill. Spend is shown live on the page and in the run summary.
 - **Auth errors** (bad key, empty balance) stop the run at once instead of failing every row.
 
+## Web app security
+
+The web app runs on your machine and spends your API credits, so other websites open in the same browser must not be able to use it. It:
+
+- listens on `127.0.0.1` only, never on the network;
+- answers only when the `Host` header is exactly `127.0.0.1:<port>` or `localhost:<port>`, which blocks DNS-rebinding pages;
+- rejects any request whose `Origin` header is not the app's own origin;
+- creates a fresh random token at every start (`secrets.token_urlsafe(32)`), puts it only in the page it serves, and requires it in an `X-Review-Intel-Token` header on every `/api/` call, downloads included. Another site cannot read the page, so it cannot learn the token;
+- accepts POSTs only as `Content-Type: application/json`, which a cross-site HTML form cannot send.
+
+Each rejection path has a test in `tests/test_server_security.py`.
+
 ## Tool choices
 
 All data calls go to the treg REST API: `POST/GET https://treg.to/call/<tool-id>` with the header `X-Treg-Token: $TREG_API_KEY`. The body is the provider's own JSON, and `X-Treg-Cost-Micro` is the charge. `Authorization: Bearer` is not accepted on `/call` (it returns 401).
@@ -115,7 +127,7 @@ Test runs on 13 Nov 2026, cold cache, 8 workers:
 python3 -m pytest -q
 ```
 
-The tests cover name cleaning, reviewer-name formatting, domain parsing, listing matching (domain, phone, name, generic-name refusal), review selection, every competitor rule, CSV parsing, the spend cap, and the three edge cases end to end against a fake treg. They need no network and spend nothing.
+The tests cover name cleaning, reviewer-name formatting, domain parsing, listing matching (domain, phone, name, generic-name refusal), review selection, every competitor rule, CSV parsing, the spend cap, and the three edge cases end to end against a fake treg. They also cover every web-app security check above. They need no network and spend nothing.
 
 ## Files
 
@@ -130,7 +142,7 @@ review_intel/
   summarize.py    Anthropic API / claude CLI summaries
   http.py         treg client, retries, cache, spend meter
   website.py      root domains, homepage name/phones
-  server.py       local web app (127.0.0.1 only)
+  server.py       local web app (127.0.0.1 only; host, origin, token and content-type checks)
 web/index.html    the page
 docs/screenshots/ the page at 1440px and 390px
 sample/           leads_sample.csv, the 12-row test, the 60-row test

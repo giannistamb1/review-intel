@@ -1,5 +1,13 @@
 """Local web app: stdlib ThreadingHTTPServer bound to 127.0.0.1 only.
 
+Hardening (any web page open in the same browser must not be able to start paid runs or read results):
+  * binds 127.0.0.1 only
+  * every request: Host must be exactly 127.0.0.1:<port> or localhost:<port> (blocks DNS rebinding)
+  * every request with an Origin header: it must be this server's own origin (blocks cross-site POSTs)
+  * every /api/ request (GET and POST, downloads included): header X-Review-Intel-Token must equal a
+    per-process secrets.token_urlsafe(32) token, which is only injected into the served index.html
+  * POST must be Content-Type: application/json (a cross-site HTML form cannot send that)
+
 GET  /                      the page (web/index.html)
 GET  /assets/<file>         static assets
 GET  /template.csv          input template
@@ -10,8 +18,10 @@ GET  /api/jobs/<id>/csv     enriched CSV download
 """
 from __future__ import annotations
 
+import hmac
 import json
 import mimetypes
+import secrets
 import socket
 import threading
 import uuid
@@ -25,6 +35,9 @@ from .summarize import backend
 
 JOBS: dict[str, Job] = {}
 MAX_UPLOAD = 5 * 1024 * 1024
+TOKEN = secrets.token_urlsafe(32)  # new every process start; never written to disk
+TOKEN_HEADER = "X-Review-Intel-Token"
+TOKEN_PLACEHOLDER = "__REVIEW_INTEL_TOKEN__"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -47,10 +60,41 @@ class Handler(BaseHTTPRequestHandler):
     def _json(self, code: int, obj):
         self._send(code, json.dumps(obj).encode(), "application/json")
 
+    # ---------- request guards ----------
+
+    def _guard(self, path: str, post: bool = False) -> bool:
+        """True if the request may proceed; otherwise the error response has already been sent."""
+        port = self.server.server_address[1]
+        host = (self.headers.get("Host") or "").strip().lower()
+        allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+        if host not in allowed_hosts:
+            self._json(403, {"error": "forbidden host"})
+            return False
+        origin = self.headers.get("Origin")
+        if origin is not None and origin.strip().lower() != f"http://{host}":
+            self._json(403, {"error": "forbidden origin"})
+            return False
+        if path.startswith("/api/"):
+            sent = self.headers.get(TOKEN_HEADER) or ""
+            if not hmac.compare_digest(sent.encode(), TOKEN.encode()):
+                self._json(403, {"error": "missing or bad token"})
+                return False
+        if post:
+            ctype = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+            if ctype != "application/json":
+                self._json(415, {"error": "Content-Type must be application/json"})
+                return False
+        return True
+
     def do_GET(self):
         path = self.path.split("?", 1)[0]
+        if not self._guard(path):
+            return
         if path in ("/", "/index.html"):
-            return self._send(200, (WEB / "index.html").read_bytes(), "text/html; charset=utf-8")
+            page = (WEB / "index.html").read_text(encoding="utf-8").replace(TOKEN_PLACEHOLDER, TOKEN)
+            return self._send(200, page.encode("utf-8"), "text/html; charset=utf-8",
+                              {"Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY",
+                               "Content-Security-Policy": "frame-ancestors 'none'"})
         if path.startswith("/assets/"):
             f = (WEB / "assets" / Path(path).name)
             if f.is_file():
@@ -77,7 +121,10 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(404, b"not found", "text/plain")
 
     def do_POST(self):
-        if self.path != "/api/jobs":
+        path = self.path.split("?", 1)[0]
+        if not self._guard(path, post=True):
+            return
+        if path != "/api/jobs":
             return self._json(404, {"error": "not found"})
         n = int(self.headers.get("Content-Length") or 0)
         if n > MAX_UPLOAD:

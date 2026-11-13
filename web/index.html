@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="review-intel-token" content="__REVIEW_INTEL_TOKEN__">
 <title>Review Intel · ColdLabs</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -214,12 +215,14 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
+const TOKEN = document.querySelector('meta[name="review-intel-token"]').content;
+const api = (url, opts = {}) => fetch(url, { ...opts, headers: { ...(opts.headers || {}), "X-Review-Intel-Token": TOKEN } });
 let csvText = "", fileName = "", jobId = null, timer = null;
 const REQUIRED = { domain: ["domain","website","url","site","root_domain","company_domain"], city: ["city","town"],
   state: ["state","st","state_code","region"], zip: ["zip","zipcode","zip_code","postal_code","postcode","postal"] };
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
-fetch("/api/health").then(r => r.json()).then(h => {
+api("/api/health").then(r => r.json()).then(h => {
   $("h-treg").innerHTML = h.treg_key ? '<span class="ok">set</span>' : '<span class="no">missing</span>';
   $("h-llm").innerHTML = h.llm_backend === "anthropic" ? `<span class="ok">Anthropic API · ${esc(h.model)}</span>`
     : h.llm_backend === "claude-cli" ? `<span class="meh">claude CLI · ${esc(h.model)}</span>` : '<span class="no">none</span>';
@@ -271,7 +274,7 @@ drop.addEventListener("drop", e => setFile(e.dataTransfer.files[0]));
 
 $("run").addEventListener("click", async () => {
   $("run").disabled = true; $("err").hidden = true;
-  const r = await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ filename: fileName, csv: csvText }) });
+  const r = await api("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ filename: fileName, csv: csvText }) });
   const d = await r.json();
   if (!r.ok) { showErr(d.error || "Could not start the run."); $("run").disabled = false; return; }
   jobId = d.id;
@@ -283,7 +286,7 @@ $("run").addEventListener("click", async () => {
 const STAGE = { queued: "queued", listing: "finding listing", reviews: "reading reviews", summaries: "summarising", competitors: "competitors" };
 async function poll() {
   clearTimeout(timer);
-  const r = await fetch(`/api/jobs/${jobId}`); const d = await r.json(); const s = d.summary;
+  const r = await api(`/api/jobs/${jobId}`); const d = await r.json(); const s = d.summary;
   const c = s.status_counts || {};
   $("s-rows").textContent = `${s.done} / ${s.rows}`;
   $("s-state").textContent = s.state === "done" ? `finished in ${s.seconds}s` : `running · ${s.seconds}s`;
@@ -305,12 +308,25 @@ async function poll() {
       <td class="num">${r.seconds != null ? r.seconds + "s" : ""}</td></tr>`;
   }).join("");
   if (s.state === "done") {
-    const a = $("download"); a.href = `/api/jobs/${jobId}/csv`; a.setAttribute("aria-disabled", "false"); a.classList.add("primary");
+    const a = $("download"); a.dataset.job = jobId; a.setAttribute("aria-disabled", "false"); a.classList.add("primary");
     $("run").disabled = false;
     if (s.fatal) showErr(s.fatal);
   } else timer = setTimeout(poll, 800);
 }
-$("download").addEventListener("click", e => { if ($("download").getAttribute("aria-disabled") === "true") e.preventDefault(); });
+// The CSV is fetched with the token header (a plain link cannot send one), then saved from a blob.
+$("download").addEventListener("click", async e => {
+  e.preventDefault();
+  const a = $("download");
+  if (a.getAttribute("aria-disabled") === "true" || !a.dataset.job) return;
+  const r = await api(`/api/jobs/${a.dataset.job}/csv`);
+  if (!r.ok) { showErr("Download failed."); return; }
+  const blob = await r.blob();
+  const name = (fileName.replace(/\.csv$/i, "") || "leads") + "_enriched.csv";
+  const url = URL.createObjectURL(blob);
+  const tmp = Object.assign(document.createElement("a"), { href: url, download: name });
+  document.body.appendChild(tmp); tmp.click(); tmp.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
 </script>
 </body>
 </html>
