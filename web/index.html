@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review Intel · ColdLabs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-top: #0d1f1f; --bg-bottom: #1b3a3a; --panel: rgba(255,255,255,.035); --panel-solid: #12292a;
+    --line: rgba(255,255,255,.10); --line-strong: rgba(255,255,255,.18);
+    --text: #f2f7f7; --muted: #a3b8b8; --dim: #7f9898;
+    --accent: #5fd9d6; --accent-ink: #072121; --good: #7ee0a8; --warn: #ffc266; --bad: #ff8f7e;
+    --radius: 12px;
+    --head: "Space Grotesk", system-ui, sans-serif; --body: "DM Sans", system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { min-height: 100%; background: linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 100%); }
+  body { margin: 0; min-height: 100vh; color: var(--text); font: 15px/1.5 var(--body); overflow-x: hidden; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 24px; }
+  .eyebrow { font: 500 11px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+  .eyebrow .hl { background: var(--accent); color: var(--accent-ink); padding: 2px 3px; }
+  h1, h2, h3 { font-family: var(--head); margin: 0; letter-spacing: -.01em; }
+
+  header.top { border-bottom: 1px solid var(--line); }
+  .top-inner { display: flex; align-items: center; gap: 16px; padding: 18px 24px; max-width: 1240px; margin: 0 auto; }
+  .top-inner img { height: 28px; width: auto; display: block; }
+  .top-inner .spacer { flex: 1; }
+  .built { display: inline-flex; align-items: center; gap: 10px; border: 1px solid var(--line-strong); border-radius: 999px; padding: 6px 8px 6px 14px; }
+  .built .chip { border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; font-size: 13px; color: var(--text); }
+
+  .hero { padding: 44px 0 8px; }
+  .hero h1 { font-size: clamp(30px, 4.4vw, 48px); font-weight: 700; line-height: 1.08; margin-top: 18px; max-width: 900px; }
+  .hero p { color: var(--muted); margin: 14px 0 0; max-width: 680px; font-size: 16px; }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 10px; padding: 11px 18px; font-weight: 600; cursor: pointer; border: 1px solid var(--line-strong); background: transparent; white-space: nowrap; text-decoration: none !important; }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn[disabled] { opacity: .45; cursor: not-allowed; filter: none; }
+  .btn.small { padding: 7px 12px; font-size: 13px; border-radius: 8px; }
+
+  section { margin-top: 32px; }
+  .card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 22px; min-width: 0; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; }
+
+  .drop { border: 1.5px dashed var(--line-strong); border-radius: var(--radius); padding: 34px 20px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
+  .drop:hover, .drop.over { border-color: var(--accent); background: rgba(95,217,214,.05); }
+  .drop h3 { font-size: 18px; font-weight: 600; margin: 10px 0 4px; }
+  .drop p { color: var(--dim); margin: 0; font-size: 14px; }
+  .drop .icon { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line-strong); display: inline-grid; place-items: center; color: var(--accent); font-size: 20px; }
+  .file-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+  .file-name { font-weight: 600; overflow-wrap: anywhere; }
+  .file-meta { color: var(--dim); font-size: 13px; }
+  .msg { margin-top: 14px; font-size: 14px; border-radius: 8px; padding: 10px 12px; }
+  .msg.err { color: var(--bad); border: 1px solid rgba(255,143,126,.4); background: rgba(255,143,126,.07); }
+  .msg.warn { color: var(--warn); border: 1px solid rgba(255,194,102,.35); background: rgba(255,194,102,.06); }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+
+  .kv { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 10px; font-size: 14px; }
+  .kv li { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+  .kv li:last-child { border-bottom: 0; padding-bottom: 0; }
+  .kv li > span:first-child { color: var(--dim); }
+  .ok { color: var(--good); } .no { color: var(--bad); } .meh { color: var(--warn); }
+  code { font: 12.5px var(--mono); background: rgba(0,0,0,.25); padding: 1px 6px; border-radius: 5px; }
+
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--panel); }
+  .stat { padding: 16px 18px; border-right: 1px solid var(--line); min-width: 0; }
+  .stat:last-child { border-right: 0; }
+  .stat .n { font: 700 28px/1.1 var(--head); margin-top: 8px; font-variant-numeric: tabular-nums; }
+  .stat .n.accent { color: var(--accent); }
+  .stat .sub { font-size: 12px; color: var(--dim); margin-top: 4px; }
+  .bar { height: 4px; background: rgba(255,255,255,.08); border-radius: 4px; overflow: hidden; margin-top: 14px; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .4s; }
+
+  .sec-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  .sec-head h2 { font-size: 20px; font-weight: 600; }
+  .table-wrap { border: 1px solid var(--line); border-radius: var(--radius); overflow-x: auto; background: var(--panel); position: relative; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font: 500 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); background: rgba(0,0,0,.18); white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.dom { font-weight: 600; white-space: nowrap; }
+  td.dom .lst { display: block; font-weight: 400; color: var(--dim); font-size: 12.5px; margin-top: 2px; white-space: normal; }
+  td.num { color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.revs { min-width: 300px; white-space: pre-line; font-size: 13.5px; }
+  td.comps { min-width: 190px; font-size: 13.5px; }
+  td.comps ol { margin: 0; padding-left: 18px; }
+  td.notes { min-width: 220px; color: var(--muted); font-size: 13px; }
+  .tag { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 3px 10px; font-size: 12px; border: 1px solid var(--line-strong); color: var(--muted); white-space: nowrap; }
+  .tag.ok { color: var(--good); border-color: rgba(126,224,168,.45); }
+  .tag.partial { color: var(--warn); border-color: rgba(255,194,102,.45); }
+  .tag.no_listing, .tag.error, .tag.invalid_input, .tag.skipped_budget, .tag.skipped { color: var(--bad); border-color: rgba(255,143,126,.45); }
+  .tag.run { color: var(--accent); border-color: rgba(95,217,214,.45); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .tag.run .dot { animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: .25; } }
+  .dash { color: var(--dim); }
+  .empty { padding: 28px; text-align: center; color: var(--dim); }
+  .legend { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .legend h3 { font-size: 15px; font-weight: 600; margin: 8px 0 6px; }
+  .legend p { color: var(--muted); font-size: 14px; margin: 0; }
+  footer { margin: 48px 0 32px; color: var(--dim); font-size: 13px; }
+  [hidden] { display: none !important; }
+
+  @media (max-width: 900px) { .grid, .legend { grid-template-columns: 1fr; } .stats { grid-template-columns: 1fr 1fr; } .stat:nth-child(2) { border-right: 0; } .stat:nth-child(-n+2) { border-bottom: 1px solid var(--line); } }
+  @media (max-width: 640px) {
+    .wrap, .top-inner { padding-left: 16px; padding-right: 16px; }
+    .top-inner img { height: 22px; }
+    .built { display: none; }
+    .card { padding: 16px; }
+    .drop { padding: 26px 14px; }
+    .actions .btn { flex: 1 1 100%; }
+    .stat .n { font-size: 22px; }
+    /* table becomes stacked cards on phones */
+    .table-wrap { overflow: visible; border: 0; background: none; }
+    table, tbody, tr, td { display: block; width: 100%; }
+    thead { display: none; }
+    tbody tr { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); margin-bottom: 12px; padding: 4px 0; }
+    td { border-bottom: 1px solid var(--line); padding: 10px 14px; min-width: 0 !important; }
+    td:last-child { border-bottom: 0; }
+    td[data-l]::before { content: attr(data-l); display: block; font: 500 10px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); margin-bottom: 6px; }
+    td.num { display: none; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <img src="/assets/coldlabs-wordmark.png" alt="ColdLabs" width="958" height="225">
+    <span class="spacer"></span>
+    <span class="built"><span class="eyebrow">Built on</span><span class="chip">treg</span><span class="chip">claude code</span></span>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="hero">
+    <span class="eyebrow"><span class="hl">RE</span>VIEW INTEL · DENTAL PROSPECTS</span>
+    <h1>Bad reviews and better-rated rivals, for every practice on your list.</h1>
+    <p>Upload domains with city, state and ZIP. You get back the same list with each practice's most recent 1–2 star Google reviews as email-ready bullets, and its top three local competitors.</p>
+  </div>
+
+  <section class="grid">
+    <div class="card">
+      <div class="eyebrow">1 · Upload</div>
+      <label class="drop" id="drop" tabindex="0" style="display:block;margin-top:14px">
+        <input type="file" id="file" accept=".csv,text/csv" hidden>
+        <span class="icon" aria-hidden="true">↑</span>
+        <h3>Drop a CSV here, or click to choose</h3>
+        <p>Columns: <code>domain</code> <code>city</code> <code>state</code> <code>zip</code>. Extra columns are kept.</p>
+      </label>
+      <div class="file-row" id="file-row" hidden>
+        <span class="file-name" id="file-name"></span>
+        <span class="file-meta" id="file-meta"></span>
+      </div>
+      <div class="msg err" id="err" role="alert" hidden></div>
+      <div class="actions">
+        <button class="btn primary" id="run" type="button" disabled>Run enrichment <span aria-hidden="true">→</span></button>
+        <a class="btn" href="/template.csv" download>Download template</a>
+      </div>
+    </div>
+    <div class="card">
+      <div class="eyebrow">Setup on this machine</div>
+      <ul class="kv" id="health">
+        <li><span>treg key</span><span id="h-treg">…</span></li>
+        <li><span>Summaries</span><span id="h-llm">…</span></li>
+        <li><span>Spend cap per run</span><span id="h-cap">…</span></li>
+        <li><span>Competitor radius</span><span id="h-rad">…</span></li>
+      </ul>
+      <div class="msg warn" id="h-warn" hidden></div>
+    </div>
+  </section>
+
+  <section id="progress-sec" hidden>
+    <div class="stats">
+      <div class="stat"><div class="eyebrow">Rows</div><div class="n" id="s-rows">0 / 0</div><div class="sub" id="s-state">starting</div><div class="bar"><i id="s-bar"></i></div></div>
+      <div class="stat"><div class="eyebrow">Complete</div><div class="n accent" id="s-ok">0</div><div class="sub" id="s-partial">0 partial</div></div>
+      <div class="stat"><div class="eyebrow">Needs a look</div><div class="n" id="s-bad">0</div><div class="sub">no listing, error or skipped</div></div>
+      <div class="stat"><div class="eyebrow">Spend</div><div class="n" id="s-spend">$0.0000</div><div class="sub" id="s-spend-sub">cap $0</div></div>
+    </div>
+  </section>
+
+  <section id="results-sec" hidden>
+    <div class="sec-head">
+      <h2>Results</h2>
+      <a class="btn primary" id="download" href="#" aria-disabled="true">Download enriched CSV <span aria-hidden="true">↓</span></a>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Practice</th><th>Status</th><th>Bad reviews</th><th>Top 3 competitors</th><th>Notes</th><th>Time</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">When data is missing, the cell stays blank and the notes column says why</div>
+    <div class="legend" style="margin-top:14px">
+      <div class="card"><span class="tag partial"><span class="dot"></span>partial</span><h3>Fewer than 3 bad reviews</h3><p>We return the ones that exist (1 or 2) and note how many there are, including star-only reviews with no text to summarise. Nothing is padded.</p></div>
+      <div class="card"><span class="tag no_listing"><span class="dot"></span>no_listing</span><h3>Google listing not found</h3><p>Matched on the listing's website, then on a phone number from the practice's homepage, then on the homepage's own name, always in the same ZIP or city. No match: no reviews. Competitors still come from the ZIP, flagged.</p></div>
+      <div class="card"><span class="tag partial"><span class="dot"></span>partial</span><h3>Fewer than 3 real competitors</h3><p>Only dental practices within 5 mi, rated higher than the prospect, with 10+ reviews count. If fewer pass, the rest stay blank and the notes list what was excluded.</p></div>
+    </div>
+  </section>
+
+  <footer>Runs on your machine. Keys stay in your environment. Reruns are served from the local cache at no cost.</footer>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let csvText = "", fileName = "", jobId = null, timer = null;
+const REQUIRED = { domain: ["domain","website","url","site","root_domain","company_domain"], city: ["city","town"],
+  state: ["state","st","state_code","region"], zip: ["zip","zipcode","zip_code","postal_code","postcode","postal"] };
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+fetch("/api/health").then(r => r.json()).then(h => {
+  $("h-treg").innerHTML = h.treg_key ? '<span class="ok">set</span>' : '<span class="no">missing</span>';
+  $("h-llm").innerHTML = h.llm_backend === "anthropic" ? `<span class="ok">Anthropic API · ${esc(h.model)}</span>`
+    : h.llm_backend === "claude-cli" ? `<span class="meh">claude CLI · ${esc(h.model)}</span>` : '<span class="no">none</span>';
+  $("h-cap").textContent = "$" + Number(h.max_usd).toFixed(2);
+  $("h-rad").textContent = h.radius_mi + " mi";
+  const w = [];
+  if (!h.treg_key) w.push("Set TREG_API_KEY in .env and restart the command.");
+  if (h.llm_backend === "none") w.push("No ANTHROPIC_API_KEY and no claude CLI: review bullets will be blank.");
+  if (w.length) { $("h-warn").hidden = false; $("h-warn").textContent = w.join(" "); }
+});
+
+function splitLine(line) {  // minimal CSV header split, quotes respected
+  const out = []; let cur = "", q = false;
+  for (const ch of line) { if (ch === '"') q = !q; else if ((ch === "," || ch === ";" || ch === "\t") && !q) { out.push(cur); cur = ""; } else cur += ch; }
+  out.push(cur); return out.map(s => s.trim());
+}
+function validate(text) {
+  const lines = text.replace(/^﻿/, "").split(/\r?\n/).filter(l => l.trim());
+  if (!lines.length) return { error: "The file is empty." };
+  const head = splitLine(lines[0]).map(h => h.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, ""));
+  const missing = Object.keys(REQUIRED).filter(k => !head.some(h => REQUIRED[k].includes(h)));
+  if (missing.length) return { error: `Missing column(s): ${missing.join(", ")}. Download the template to see the format.` };
+  if (lines.length < 2) return { error: "No data rows under the header." };
+  return { rows: lines.length - 1 };
+}
+function setFile(f) {
+  $("err").hidden = true;
+  if (!f) return;
+  if (!/\.csv$/i.test(f.name)) { showErr("That is not a .csv file."); return; }
+  const rd = new FileReader();
+  rd.onload = () => {
+    const v = validate(rd.result);
+    $("file-row").hidden = false; $("file-name").textContent = f.name;
+    if (v.error) { showErr(v.error); $("run").disabled = true; $("file-meta").textContent = ""; return; }
+    csvText = rd.result; fileName = f.name;
+    $("file-meta").textContent = `${v.rows} row${v.rows === 1 ? "" : "s"} · columns OK`;
+    $("run").disabled = false;
+  };
+  rd.readAsText(f);
+}
+function showErr(m) { $("err").hidden = false; $("err").textContent = m; }
+
+const drop = $("drop");
+$("file").addEventListener("change", e => setFile(e.target.files[0]));
+drop.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } });
+["dragenter","dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave","drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => setFile(e.dataTransfer.files[0]));
+
+$("run").addEventListener("click", async () => {
+  $("run").disabled = true; $("err").hidden = true;
+  const r = await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ filename: fileName, csv: csvText }) });
+  const d = await r.json();
+  if (!r.ok) { showErr(d.error || "Could not start the run."); $("run").disabled = false; return; }
+  jobId = d.id;
+  $("progress-sec").hidden = false; $("results-sec").hidden = false;
+  $("download").setAttribute("aria-disabled", "true"); $("download").classList.remove("primary");
+  poll();
+});
+
+const STAGE = { queued: "queued", listing: "finding listing", reviews: "reading reviews", summaries: "summarising", competitors: "competitors" };
+async function poll() {
+  clearTimeout(timer);
+  const r = await fetch(`/api/jobs/${jobId}`); const d = await r.json(); const s = d.summary;
+  const c = s.status_counts || {};
+  $("s-rows").textContent = `${s.done} / ${s.rows}`;
+  $("s-state").textContent = s.state === "done" ? `finished in ${s.seconds}s` : `running · ${s.seconds}s`;
+  $("s-bar").style.width = (s.rows ? 100 * s.done / s.rows : 0) + "%";
+  $("s-ok").textContent = c.ok || 0; $("s-partial").textContent = `${c.partial || 0} partial`;
+  $("s-bad").textContent = (c.no_listing || 0) + (c.error || 0) + (c.skipped_budget || 0) + (c.invalid_input || 0) + (c.skipped || 0);
+  $("s-spend").textContent = "$" + s.spend.total_usd.toFixed(4);
+  $("s-spend-sub").textContent = `cap $${s.spend.max_usd.toFixed(2)} · ${s.spend.cache_hits} cached`;
+  $("rows").innerHTML = d.rows.map(r => {
+    const tag = r.stage === "done" ? `<span class="tag ${esc(r.status)}"><span class="dot"></span>${esc(r.status.replace("_", " "))}</span>`
+      : `<span class="tag ${r.stage === "queued" ? "" : "run"}"><span class="dot"></span>${esc(STAGE[r.stage] || r.stage)}</span>`;
+    const comps = r.competitors.length ? `<ol>${r.competitors.map(n => `<li>${esc(n)}</li>`).join("")}</ol>` : '<span class="dash">—</span>';
+    return `<tr><td class="num">${r.i + 1}</td>
+      <td class="dom" data-l="Practice">${esc(r.domain)}${r.listing ? `<span class="lst">${esc(r.listing)}${r.rating ? " · " + esc(r.rating) + "★" : ""}</span>` : ""}</td>
+      <td data-l="Status">${tag}</td>
+      <td class="revs" data-l="Bad reviews">${r.bad_reviews ? esc(r.bad_reviews) : '<span class="dash">—</span>'}</td>
+      <td class="comps" data-l="Competitors">${comps}</td>
+      <td class="notes" data-l="Notes">${r.notes ? esc(r.notes) : '<span class="dash">—</span>'}</td>
+      <td class="num">${r.seconds != null ? r.seconds + "s" : ""}</td></tr>`;
+  }).join("");
+  if (s.state === "done") {
+    const a = $("download"); a.href = `/api/jobs/${jobId}/csv`; a.setAttribute("aria-disabled", "false"); a.classList.add("primary");
+    $("run").disabled = false;
+    if (s.fatal) showErr(s.fatal);
+  } else timer = setTimeout(poll, 800);
+}
+$("download").addEventListener("click", e => { if ($("download").getAttribute("aria-disabled") === "true") e.preventDefault(); });
+</script>
+</body>
+</html>
